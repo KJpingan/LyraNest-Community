@@ -1,4 +1,4 @@
-﻿services:
+services:
   lyranest-community-server:
     build:
       # Community edition server source directory.
@@ -21,6 +21,12 @@
       LOG_LEVEL: "${LOG_LEVEL:-info}"
       SHUTDOWN_TIMEOUT: "${SHUTDOWN_TIMEOUT:-10s}"
       AUTH_SESSION_TTL: "${AUTH_SESSION_TTL:-24h}"
+      # Optional online lyrics source (HisAtri/LrcApi compatible service).
+      # Leave empty to disable; when set, the server queries LrcApi by
+      # title/artist after local sidecar and embedded lyrics are unavailable.
+      LRCAPI_BASE_URL: "${LRCAPI_BASE_URL:-}"
+      LRCAPI_AUTH_KEY: "${LRCAPI_AUTH_KEY:-}"
+      LRCAPI_TIMEOUT: "${LRCAPI_TIMEOUT:-10s}"
     ports:
       # Change SERVER_PORT to expose another host port, for example 18080:8080.
       - "${SERVER_PORT:-8080}:8080"

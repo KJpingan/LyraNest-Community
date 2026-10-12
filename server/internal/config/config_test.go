@@ -14,6 +14,9 @@ func TestLoadDefaults(t *testing.T) {
 		"LOG_LEVEL",
 		"SHUTDOWN_TIMEOUT",
 		"AUTH_SESSION_TTL",
+		"LRCAPI_BASE_URL",
+		"LRCAPI_AUTH_KEY",
+		"LRCAPI_TIMEOUT",
 	} {
 		t.Setenv(key, "")
 	}
@@ -38,6 +41,15 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.AuthSessionTTL != 24*time.Hour {
 		t.Fatalf("AuthSessionTTL = %v, want 24h", cfg.AuthSessionTTL)
 	}
+	if cfg.LyricsAPIBaseURL != "" {
+		t.Fatalf("LyricsAPIBaseURL = %q, want empty", cfg.LyricsAPIBaseURL)
+	}
+	if cfg.LyricsAPIAuthKey != "" {
+		t.Fatalf("LyricsAPIAuthKey = %q, want empty", cfg.LyricsAPIAuthKey)
+	}
+	if cfg.LyricsAPITimeout != 10*time.Second {
+		t.Fatalf("LyricsAPITimeout = %v, want 10s", cfg.LyricsAPITimeout)
+	}
 }
 
 func TestLoadEnvironmentOverrides(t *testing.T) {
@@ -47,6 +59,9 @@ func TestLoadEnvironmentOverrides(t *testing.T) {
 	t.Setenv("LOG_LEVEL", " debug ")
 	t.Setenv("SHUTDOWN_TIMEOUT", " 3s ")
 	t.Setenv("AUTH_SESSION_TTL", " 12h ")
+	t.Setenv("LRCAPI_BASE_URL", " http://lrcapi:1122/ ")
+	t.Setenv("LRCAPI_AUTH_KEY", " secret-key ")
+	t.Setenv("LRCAPI_TIMEOUT", " 15s ")
 
 	cfg := Load()
 
@@ -68,4 +83,12 @@ func TestLoadEnvironmentOverrides(t *testing.T) {
 	if cfg.AuthSessionTTL != 12*time.Hour {
 		t.Fatalf("AuthSessionTTL = %v, want 12h", cfg.AuthSessionTTL)
 	}
-}
+	if cfg.LyricsAPIBaseURL != "http://lrcapi:1122/" {
+		t.Fatalf("LyricsAPIBaseURL = %q, want http://lrcapi:1122/", cfg.LyricsAPIBaseURL)
+	}
+	if cfg.LyricsAPIAuthKey != "secret-key" {
+		t.Fatalf("LyricsAPIAuthKey = %q, want secret-key", cfg.LyricsAPIAuthKey)
+	}
+	if cfg.LyricsAPITimeout != 15*time.Second {
+		t.Fatalf("LyricsAPITimeout = %v, want 15s", cfg.LyricsAPITimeout)
+	}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"music-player-server/internal/config"
 	"music-player-server/internal/httpapi"
 	"music-player-server/internal/library"
+	"music-player-server/internal/metadata"
 	"music-player-server/internal/store"
 	"music-player-server/internal/userdata"
 )
@@ -99,7 +101,7 @@ func buildServer(ctx context.Context, cfg config.Config) (*serverApplication, er
 		return nil, fmt.Errorf("create user data store: %w", err)
 	}
 
-	lyrics := library.NewLyricsService()
+	lyrics := buildLyricsService(cfg)
 	scanner := library.NewScanner(cfg.LibraryDir)
 	libraryManagement := httpapi.NewLibraryManagementService(cfg.LibraryDir, scanner, repository)
 	scanResult, err := libraryManagement.Scan(ctx)
@@ -125,6 +127,23 @@ func buildServer(ctx context.Context, cfg config.Config) (*serverApplication, er
 		},
 		trackCount: scanResult.Total,
 	}, nil
+}
+
+// buildLyricsService constructs the lyrics service with the standard local
+// readers plus an optional online LrcApi fallback when LRCAPI_BASE_URL is
+// configured. Leaving the base URL empty keeps behavior identical to the
+// previous NewLyricsService() default.
+func buildLyricsService(cfg config.Config) *library.LyricsService {
+	if strings.TrimSpace(cfg.LyricsAPIBaseURL) == "" {
+		return library.NewLyricsService()
+	}
+	onlineClient := library.NewLrcAPIClient(cfg.LyricsAPIBaseURL, cfg.LyricsAPIAuthKey, cfg.LyricsAPITimeout)
+	slog.Info("online lyrics source enabled",
+		"base_url", cfg.LyricsAPIBaseURL,
+		"timeout", cfg.LyricsAPITimeout.String(),
+		"auth_enabled", cfg.LyricsAPIAuthKey != "",
+	)
+	return library.NewLyricsServiceWithOnline(metadata.NewLocalReader(), onlineClient)
 }
 
 func runHealthcheck() error {

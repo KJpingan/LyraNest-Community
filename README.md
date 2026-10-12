@@ -112,6 +112,12 @@ services:
       LOG_LEVEL: "${LOG_LEVEL:-info}"
       SHUTDOWN_TIMEOUT: "${SHUTDOWN_TIMEOUT:-10s}"
       AUTH_SESSION_TTL: "${AUTH_SESSION_TTL:-24h}"
+      # 自定义在线歌词源（HisAtri/LrcApi 兼容服务）。
+      # 留空则禁用；填写后，当本地无 .lrc 也无内嵌歌词时，
+      # 服务端会按标题/歌手调用 LrcApi 获取标准 LRC 歌词并缓存。
+      LRCAPI_BASE_URL: "${LRCAPI_BASE_URL:-}"
+      LRCAPI_AUTH_KEY: "${LRCAPI_AUTH_KEY:-}"
+      LRCAPI_TIMEOUT: "${LRCAPI_TIMEOUT:-10s}"
     ports:
       # 修改 SERVER_PORT 可映射其他主机端口，例如 18080:8080。
       - "${SERVER_PORT:-8080}:8080"
@@ -140,6 +146,9 @@ services:
 | `SERVER_MEMORY_RESERVATION` | `128m` | Docker 容器预留内存 |
 | `GOMEMLIMIT` | `192MiB` | Go 服务的内存目标值 |
 | `AUTH_SESSION_TTL` | `24h` | 登录会话有效期 |
+| `LRCAPI_BASE_URL` | _(空，禁用)_ | 自托管 LrcApi（`HisAtri/LrcApi`）服务地址，例如 `http://lrcapi:1122`；留空时仅在本地查找歌词 |
+| `LRCAPI_AUTH_KEY` | _(空)_ | LrcApi 服务的鉴权密钥；与服务端 `API_AUTH` 一致即可，未启用鉴权时留空 |
+| `LRCAPI_TIMEOUT` | `10s` | 调用 LrcApi 的 HTTP 超时 |
 
 例如，音乐保存在 `/volume1/music` 且希望使用 `18080` 端口时：
 
@@ -201,4 +210,3 @@ docker compose exec lyranest-community-server /usr/local/bin/music-player-server
 <p align="center">
   <img src="docs/images/sponsor-qrcode.jpg" alt="LyraNest 赞赏码" width="220" />
 </p>
-

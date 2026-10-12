@@ -2,8 +2,11 @@ package library
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -140,6 +143,92 @@ func TestReadForTrackMissingWhenNoSidecarOrEmbeddedLyrics(t *testing.T) {
 	})
 
 	_, err := NewLyricsService().ReadForTrack(NewTrack(path, 1, time.Now()))
+	if !errors.Is(err, ErrLyricsNotFound) {
+		t.Fatalf("err = %v, want ErrLyricsNotFound", err)
+	}
+}
+
+func newOnlineLrcServer(t *testing.T, hits *int32, wantTitle, wantArtist string, body string, status int) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/lyrics/single" {
+			t.Fatalf("path = %q, want /api/v1/lyrics/single", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("title"); wantTitle != "" && got != wantTitle {
+			t.Fatalf("title = %q, want %q", got, wantTitle)
+		}
+		if got := r.URL.Query().Get("artist"); wantArtist != "" && got != wantArtist {
+			t.Fatalf("artist = %q, want %q", got, wantArtist)
+		}
+		if hits != nil {
+			if stored := atomic.AddInt32(hits, 1); stored > 1 {
+				t.Fatalf("lrcapi server hit %d times, expected at most 1 (cache should serve)", stored)
+			}
+		}
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+}
+
+func TestReadForTrackFallsBackToOnlineLyrics(t *testing.T) {
+	server := newOnlineLrcServer(t, nil, "孤勇者", "Eason Chan", "[00:01.00]在线歌词\n", http.StatusOK)
+	defer server.Close()
+
+	client := NewLrcAPIClient(server.URL, "key", time.Second)
+	service := NewLyricsServiceWithOnline(nil, client)
+
+	track := Track{ID: "track-online", Title: "孤勇者", Artist: "Eason Chan", Path: "/nonexistent/path.flac"}
+	lyrics, err := service.ReadForTrack(track)
+	if err != nil {
+		t.Fatalf("ReadForTrack error: %v", err)
+	}
+	if lyrics.Content != "[00:01.00]在线歌词" {
+		t.Fatalf("content = %q", lyrics.Content)
+	}
+	if lyrics.Source != "lrcapi" {
+		t.Fatalf("source = %q, want lrcapi", lyrics.Source)
+	}
+	if lyrics.Encoding != "UTF-8" {
+		t.Fatalf("encoding = %q, want UTF-8", lyrics.Encoding)
+	}
+}
+
+func TestReadForTrackOnlineMissesReturnNotFound(t *testing.T) {
+	server := newOnlineLrcServer(t, nil, "Missing", "Nobody", "Lyrics not found.", http.StatusNotFound)
+	defer server.Close()
+
+	client := NewLrcAPIClient(server.URL, "", time.Second)
+	service := NewLyricsServiceWithOnline(nil, client)
+
+	_, err := service.ReadForTrack(Track{ID: "miss", Title: "Missing", Artist: "Nobody", Path: "/no.flac"})
+	if !errors.Is(err, ErrLyricsNotFound) {
+		t.Fatalf("err = %v, want ErrLyricsNotFound", err)
+	}
+}
+
+func TestReadForTrackOnlineResultsAreCached(t *testing.T) {
+	var hits int32
+	server := newOnlineLrcServer(t, &hits, "Cache", "Singer", "[00:00.00]cached\n", http.StatusOK)
+	defer server.Close()
+
+	client := NewLrcAPIClient(server.URL, "", time.Second)
+	service := NewLyricsServiceWithOnline(nil, client)
+
+	track := Track{ID: "cache-1", Title: "Cache", Artist: "Singer", Path: "/no.flac"}
+	if _, err := service.ReadForTrack(track); err != nil {
+		t.Fatalf("first read error: %v", err)
+	}
+	if _, err := service.ReadForTrack(track); err != nil {
+		t.Fatalf("second read error: %v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("lrcapi hits = %d, want 1 (cache should serve second call)", hits)
+	}
+}
+
+func TestReadForTrackOnlineDisabledWhenFetcherNil(t *testing.T) {
+	service := NewLyricsServiceWithOnline(nil, nil)
+	_, err := service.ReadForTrack(Track{ID: "x", Title: "X", Path: "/no.flac"})
 	if !errors.Is(err, ErrLyricsNotFound) {
 		t.Fatalf("err = %v, want ErrLyricsNotFound", err)
 	}

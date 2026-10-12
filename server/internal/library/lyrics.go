@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +37,36 @@ type Lyrics struct {
 
 type LyricsService struct {
 	metadataReader metadata.Reader
+	onlineFetcher  *LrcAPIClient
+	onlineCache    *onlineLyricsCache
+}
+
+// onlineLyricsCache memoizes LRC text fetched from an online source so that
+// subsequent playback / scrape requests for the same track do not hit the
+// remote API repeatedly. The cache is in-memory only; entries live for the
+// lifetime of the process. NAS deployments mount the music directory read-only,
+// so we never persist fetched lyrics as sidecar files.
+type onlineLyricsCache struct {
+	entries map[string]string
+}
+
+func newOnlineLyricsCache() *onlineLyricsCache {
+	return &onlineLyricsCache{entries: make(map[string]string)}
+}
+
+func (c *onlineLyricsCache) lookup(trackID string) (string, bool) {
+	if c == nil {
+		return "", false
+	}
+	value, ok := c.entries[trackID]
+	return value, ok
+}
+
+func (c *onlineLyricsCache) store(trackID, content string) {
+	if c == nil {
+		return
+	}
+	c.entries[trackID] = content
 }
 
 func NewLyricsService() *LyricsService {
@@ -44,6 +75,19 @@ func NewLyricsService() *LyricsService {
 
 func NewLyricsServiceWithMetadataReader(metadataReader metadata.Reader) *LyricsService {
 	return &LyricsService{metadataReader: metadataReader}
+}
+
+// NewLyricsServiceWithOnline enables an online LrcApi fallback used when both
+// sidecar and embedded lyrics are unavailable. metadataReader may be nil to
+// skip embedded reads (defaults are still applied by the caller). onlineFetcher
+// may be nil, in which case the service behaves like NewLyricsService().
+func NewLyricsServiceWithOnline(metadataReader metadata.Reader, onlineFetcher *LrcAPIClient) *LyricsService {
+	service := NewLyricsServiceWithMetadataReader(metadataReader)
+	if onlineFetcher != nil && onlineFetcher.Enabled() {
+		service.onlineFetcher = onlineFetcher
+		service.onlineCache = newOnlineLyricsCache()
+	}
+	return service
 }
 
 func (s *LyricsService) ReadForTrack(track Track) (Lyrics, error) {
@@ -75,7 +119,55 @@ func (s *LyricsService) ReadForTrackContext(ctx context.Context, track Track) (L
 		return Lyrics{}, err
 	}
 
-	return s.readEmbeddedLyrics(ctx, track)
+	embedded, err := s.readEmbeddedLyrics(ctx, track)
+	if err == nil {
+		return embedded, nil
+	}
+	if !errors.Is(err, ErrLyricsNotFound) {
+		return Lyrics{}, err
+	}
+
+	return s.readOnlineLyrics(ctx, track)
+}
+
+// readOnlineLyrics consults the in-memory cache first, then queries the
+// configured LrcApi service. Network or 404 errors surface as
+// ErrLyricsNotFound so the HTTP layer can return a consistent 404 to clients.
+func (s *LyricsService) readOnlineLyrics(ctx context.Context, track Track) (Lyrics, error) {
+	if s.onlineFetcher == nil {
+		return Lyrics{}, ErrLyricsNotFound
+	}
+
+	if cached, ok := s.onlineCache.lookup(track.ID); ok {
+		return Lyrics{
+			TrackID:  track.ID,
+			Encoding: "UTF-8",
+			Source:   "lrcapi",
+			Content:  cached,
+		}, nil
+	}
+
+	content, err := s.onlineFetcher.FetchLyrics(ctx, track.Title, track.Artist)
+	if err != nil {
+		if errors.Is(err, ErrLyricsNotFound) {
+			return Lyrics{}, ErrLyricsNotFound
+		}
+		slog.WarnContext(ctx, "lrcapi fetch failed",
+			"track_id", track.ID,
+			"title", track.Title,
+			"artist", track.Artist,
+			"error", err,
+		)
+		return Lyrics{}, ErrLyricsNotFound
+	}
+
+	s.onlineCache.store(track.ID, content)
+	return Lyrics{
+		TrackID:  track.ID,
+		Encoding: "UTF-8",
+		Source:   "lrcapi",
+		Content:  content,
+	}, nil
 }
 
 func readLyricsFile(path string) ([]byte, error) {

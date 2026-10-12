@@ -21,6 +21,12 @@ services:
       LOG_LEVEL: "${LOG_LEVEL:-info}"
       SHUTDOWN_TIMEOUT: "${SHUTDOWN_TIMEOUT:-10s}"
       AUTH_SESSION_TTL: "${AUTH_SESSION_TTL:-24h}"
+      # 自定义在线歌词源（HisAtri/LrcApi 兼容服务）。
+      # 留空则禁用；填写后，当本地无 .lrc 也无内嵌歌词时，
+      # 服务端会按标题/歌手调用 LrcApi 获取标准 LRC 歌词并缓存。
+      LRCAPI_BASE_URL: "${LRCAPI_BASE_URL:-}"
+      LRCAPI_AUTH_KEY: "${LRCAPI_AUTH_KEY:-}"
+      LRCAPI_TIMEOUT: "${LRCAPI_TIMEOUT:-10s}"
     ports:
       # 修改 SERVER_PORT 可映射其他主机端口，例如 18080:8080。
       - "${SERVER_PORT:-8080}:8080"

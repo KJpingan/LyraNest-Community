@@ -14,16 +14,22 @@ type Config struct {
 	LogLevel        slog.Level
 	ShutdownTimeout time.Duration
 	AuthSessionTTL  time.Duration
+	LyricsAPIBaseURL string
+	LyricsAPIAuthKey string
+	LyricsAPITimeout time.Duration
 }
 
 func Load() Config {
 	return Config{
-		Addr:            getEnv("SERVER_ADDR", ":8080"),
-		LibraryDir:      getEnv("MUSIC_LIBRARY_DIR", "./music"),
-		DataDir:         getEnv("MUSIC_DATA_DIR", "./data"),
-		LogLevel:        parseLogLevel(getEnv("LOG_LEVEL", "info")),
-		ShutdownTimeout: parseDuration(getEnv("SHUTDOWN_TIMEOUT", "10s"), 10*time.Second),
-		AuthSessionTTL:  parseDuration(getEnv("AUTH_SESSION_TTL", "24h"), 24*time.Hour),
+		Addr:             getEnv("SERVER_ADDR", ":8080"),
+		LibraryDir:       getEnv("MUSIC_LIBRARY_DIR", "./music"),
+		DataDir:          getEnv("MUSIC_DATA_DIR", "./data"),
+		LogLevel:         parseLogLevel(getEnv("LOG_LEVEL", "info")),
+		ShutdownTimeout:  parseDuration(getEnv("SHUTDOWN_TIMEOUT", "10s"), 10*time.Second),
+		AuthSessionTTL:   parseDuration(getEnv("AUTH_SESSION_TTL", "24h"), 24*time.Hour),
+		LyricsAPIBaseURL: getEnv("LRCAPI_BASE_URL", ""),
+		LyricsAPIAuthKey: getEnv("LRCAPI_AUTH_KEY", ""),
+		LyricsAPITimeout: parseDuration(getEnv("LRCAPI_TIMEOUT", "10s"), 10*time.Second),
 	}
 }
 
